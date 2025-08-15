@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jupiter Allocation Processor</title>
+  <link href="https://fonts.googleapis.com/css?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat&display=swap');
+    body {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Montserrat', sans-serif;
+    }
+    .form-container {
+      width: 100vw;
+      height: 100vh;
+      background-color: #7b2cbf;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .upload-files-container {
+      background-color: #f7fff7;
+      width: 420px;
+      padding: 30px 60px;
+      border-radius: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      box-shadow: rgba(0, 0, 0, 0.24) 0px 10px 20px;
+    }
+    .drag-file-area {
+      border: 2px dashed #7b2cbf;
+      border-radius: 40px;
+      margin: 10px 0 15px;
+      padding: 30px 50px;
+      width: 350px;
+      text-align: center;
+    }
+    .drag-file-area .upload-icon {
+      font-size: 50px;
+    }
+    .drag-file-area h3 {
+      font-size: 26px;
+      margin: 15px 0;
+    }
+    .drag-file-area label {
+      font-size: 19px;
+    }
+    .drag-file-area label .browse-files-text {
+      color: #7b2cbf;
+      font-weight: bolder;
+      cursor: pointer;
+    }
+    .default-file-input {
+      opacity: 0;
+    }
+    .file-block {
+      background-color: #7b2cbf;
+      color: #fff;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0 15px;
+      padding: 10px 20px;
+      border-radius: 25px;
+      width: 390px;
+    }
+    .file-info {
+      display: flex;
+      align-items: center;
+      font-size: 15px;
+    }
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 4.5%;
+      width: 0;
+      height: 5px;
+      background-color: #4BB543;
+      border-radius: 25px;
+    }
+    .upload-button, .convert-button {
+      background-color: #7b2cbf;
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 18px;
+      padding: 7.5px 50px;
+      margin: 10px;
+      cursor: pointer;
+    }
+    .convert-button {
+      background-color: #f76c6c;
+      display: none;
+    }
+    .uploaded-button {
+      background-color: #4BB543;
+      cursor: not-allowed;
+    }
+    #status {
+      color: green;
+      font-weight: bold;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <form class="form-container" enctype="multipart/form-data">
+    <div class="upload-files-container">
+      <h1>Jupiter Allocation</h1>
+      <div class="drag-file-area">
+        <span class="material-icons-outlined upload-icon">file_upload</span>
+        <h3 class="dynamic-message">Drag & drop any file here</h3>
+        <label class="label">or 
+          <span class="browse-files"> 
+            <input type="file" class="default-file-input" accept=".xlsx"/> 
+            <span class="browse-files-text">browse file</span> from device
+          </span> 
+        </label>
+      </div>
+      <div class="file-block">
+        <div class="file-info"> 
+          <span class="material-icons-outlined file-icon">description</span> 
+          <span class="file-name"> </span> | 
+          <span class="file-size"> </span> 
+        </div>
+        <span class="material-icons remove-file-icon">delete</span>
+        <div class="progress-bar"></div>
+      </div>
+      <button type="button" class="upload-button">Upload</button>
+      <!--<button type="button" class="convert-button">Convert</button-->
+      <p id="status"></p>
+    </div>
+  </form>
+
+  <script>
+     const fileInput = document.querySelector(".default-file-input");
+const fileName = document.querySelector(".file-name");
+const fileSize = document.querySelector(".file-size");
+const uploadedFile = document.querySelector(".file-block");
+const progressBar = document.querySelector(".progress");
+const uploadBtn = document.querySelector(".upload-button");
+const statusEl = document.getElementById("status");
+const loadingBar = document.getElementById("loading-bar");
+const loadingPercentage = document.getElementById("loading-percentage");
+let fileData = null;
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  fileName.textContent = file.name;
+  fileSize.textContent = (file.size / 1024).toFixed(1) + " KB";
+  uploadedFile.style.display = "flex";
+  progressBar.style.width = "0px";
+  loadingPercentage.textContent = "0%";
+  const reader = new FileReader();
+  reader.onload = e => fileData = e.target.result;
+  reader.readAsArrayBuffer(file);
+});
+
+document.querySelector(".remove-file-icon").addEventListener("click", () => {
+  uploadedFile.style.display = "none";
+  fileInput.value = '';
+  fileData = null;
+  uploadBtn.classList.remove("uploaded-button");
+  uploadBtn.textContent = "Upload";
+  uploadBtn.disabled = false;
+  statusEl.textContent = '';
+  loadingBar.style.display = "none";
+  loadingPercentage.textContent = "0%";
+});
+
+uploadBtn.addEventListener("click", () => {
+  if (!fileData) return alert("Please choose a file first!");
+  loadingBar.style.display = "block";
+  let width = 0;
+  const interval = setInterval(() => {
+    if (width >= 100) {
+      clearInterval(interval);
+      uploadBtn.textContent = "Processing...";
+      convertFile();
+    } else {
+      width += 1;
+      progressBar.style.width = `${width}%`;
+      loadingPercentage.textContent = `${width}%`;
+    }
+  }, 15);
+});
+
+function parseDate(dateStr) {
+  let date;
+  const ddMMyyyyFormat = /^\d{2}-\d{2}-\d{4}$/;
+  if (ddMMyyyyFormat.test(dateStr)) {
+    const parts = dateStr.split('-');
+    date = new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
+  } else {
+    date = new Date(dateStr);
+  }
+  return isNaN(date) ? null : date;
+}
+
+function normalizeDate(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function getWorkingDays(start, end) {
+  let count = 0, cur = new Date(start);
+  while (cur <= end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+function getAgingLabel(days) {
+  if (days <= 1) return "0 - 1 day";
+  if (days <= 3) return "2 - 3 days";
+  if (days <= 5) return "4 - 5 days";
+  return "Above 5 days";
+}
+
+function convertFile() {
+  try {
+    const workbook = XLSX.read(new Uint8Array(fileData), { type: 'array' });
+    const sheet = workbook.Sheets['Sheet2'];
+    const valuesSheet = workbook.Sheets['Values'];
+    const inputData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const valuesData = XLSX.utils.sheet_to_json(valuesSheet, { defval: '' });
+
+    const ownerMap = {};
+    valuesData.forEach(row => {
+      if (row['Cora Status'] && row['Owner']) {
+        ownerMap[row['Cora Status'].trim()] = row['Owner'].trim();
+      }
+    });
+    
+    const headers = ['Country', 'AP Ref #', 'Input Source', 'Current State', 'Work Type',
+      'Exception Reason', 'Document Type', 'Currency', 'Invoice No', 'Supplier Name',
+      'Supplier Number', 'PO Number', 'Invoice: Created Date', 'Current Owner',
+      'Previous State', 'Comment History', 'Company Code', 'Current State Assign Date',
+      'Invoice Due Date', 'Created date aging', 'Created date aging AH',
+      'Current State assigned date', 'Current state assigned date aging AH',
+      'Overdue/Neardue', 'Inflow Type', 'Total Amount', 'Converted Invoice Total Amount',
+      'AMT in MN','Bulk Request Document Type', 'Ownership', 'Status'];
+
+    const output = [headers];
+
+    inputData.forEach(row => {
+      const outRow = [];
+      const invDate = parseDate(row['Invoice: Created Date']);
+      const assignDate = parseDate(row['Current State Assign Date']);
+      const dueDate = parseDate(row['Invoice Due Date']);
+      headers.forEach(header => {
+        let val = '';
+        if (header === 'AP Ref #') val = row['Invoice: AP Ref No'] || '';
+        else if (header === 'PO Number') val = row['OCR PO Number'] || '';
+        else if (header === 'Created date aging') val = invDate ? Math.floor((Date.now() - invDate.getTime()) / (1000 * 60 * 60 * 24)) : '';
+        else if (header === 'Created date aging AH') val = invDate ? getAgingLabel(Math.floor((Date.now() - invDate.getTime()) / (1000 * 60 * 60 * 24))) : '';
+        else if (header === 'Current State assigned date') val = assignDate ? getWorkingDays(assignDate, new Date()) : '';
+        else if (header === 'Current state assigned date aging AH') val = assignDate ? getAgingLabel(getWorkingDays(assignDate, new Date())) : '';
+        else if (header === 'Overdue/Neardue') {
+          if (!dueDate) val = 'Due date not captured';
+          else {
+            const today = normalizeDate(new Date());
+            
+            // Calculate this Friday
+            let daysToFriday = 5 - today.getDay();
+            if (daysToFriday < 0) daysToFriday += 7;
+            const thisFriday = new Date(today);
+            thisFriday.setDate(thisFriday.getDate() + daysToFriday);
+            
+            // Calculate next Saturday (8 days after this Friday)
+            const nextSaturday = new Date(thisFriday);
+            nextSaturday.setDate(nextSaturday.getDate() + 8);
+            
+            const normalizedDueDate = normalizeDate(dueDate);
+            
+            if (normalizedDueDate <= thisFriday) {
+              val = "Overdue";
+            } else if (normalizedDueDate <= nextSaturday) {
+              val = "Neardue";
+            } else {
+              val = "Future due";
+            }
+          }
+        } else if (header === 'AMT in MN') val = Math.round((parseFloat(row['Converted Invoice Total Amount'] || 0) / 1e6) * 10000) / 10000;
+        else if (header === 'Ownership') val = ownerMap[row['Current State']] || '';
+        else if (header === 'Status') {
+          const comment = row['Comment History'] || '';
+          const state = row['Current State'] || '';
+          const owner = ownerMap[state] || '';
+          if (comment.includes('Payment feed received')) val = 'Payment feed received but Mandatory field data missing - Need to close the workflow in CORA';
+          else if (owner.toLowerCase() !== 'genpact') val = '-';
+          else if (['Awaiting Credit Note', 'Pending For Supplier Credit Note', 'Pending Response From Supplier'].includes(state)) val = 'Awaiting credit note from the supplier';
+          else val = 'Ready for TL Validation';
+        } else if (header === 'Inflow Type') {
+          const aging = invDate ? Math.floor((Date.now() - invDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+          const assignDays = assignDate ? getWorkingDays(assignDate, new Date()) : null;
+          if (aging !== null) val = aging <= 1 ? 'Fresh' : assignDays <= 1 ? 'Comeback Fresh' : 'Comeback Backlog';
+        } else val = row[header] || '';
+        outRow.push(val);
+      });
+      output.push(outRow);
+    });
+
+    const newSheet = XLSX.utils.aoa_to_sheet(output);
+    const newBook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newBook, newSheet, 'AllocationTracker');
+
+    const now = new Date();
+    const pad = n => n.toString().padStart(2, '0');
+    const fileName = `Processed_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`;
+
+    XLSX.writeFile(newBook, fileName);
+
+    statusEl.textContent = "✅ File processed and downloaded.";
+    uploadBtn.textContent = "Uploaded";
+    uploadBtn.classList.add("uploaded-button");
+    uploadBtn.disabled = true;
+    loadingBar.style.display = "none";
+  } catch (err) {
+    statusEl.textContent = "❌ Error: " + err.message;
+    loadingBar.style.display = "none";
+  }
+}
+  </script>
+</body>
+</html>
